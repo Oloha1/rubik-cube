@@ -174,7 +174,7 @@ export class Solver {
       return Solver.parseMoves(solutionStr, cubeSize);
     } catch(e) {
       console.error("Cube solve error:", e);
-      return null;
+      return { error: (e.message || String(e)) + " | state: " + stateString };
     }
     
     function getRow(faceStr, p) {

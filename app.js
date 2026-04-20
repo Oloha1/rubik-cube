@@ -175,6 +175,11 @@ async function aiSolve() {
 
   if (cancelRequested) { endSolve('⏹ Остановлено'); return; }
 
+  if (solution && solution.error) {
+    endSolve('❌ ' + solution.error);
+    return;
+  }
+
   if (!solution || solution.length === 0) {
     if (solution && solution.length === 0) {
       endSolve('✅ Куб уже собран!', 'success');
