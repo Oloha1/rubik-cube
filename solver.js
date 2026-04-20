@@ -3,10 +3,12 @@ import Cube from 'https://esm.sh/cubejs';
 
 export class Solver {
   static initialized = false;
+  static getCubeClass() { return typeof Cube === 'function' ? Cube : Cube.default; }
 
   static async initSolverAI() {
     if (!Solver.initialized) {
-      Cube.initSolver();
+      const CC = Solver.getCubeClass();
+      if (CC && CC.initSolver) CC.initSolver();
       Solver.initialized = true;
     }
   }
@@ -77,19 +79,19 @@ export class Solver {
     ];
 
     const colorMap = [
-      { r: 1,     g: 1,     b: 1,     id: 'W' }, // White
-      { r: 0.718, g: 0.071, b: 0.204, id: 'R' }, // Red
-      { r: 0,     g: 0.275, b: 0.678, id: 'B' }, // Blue
-      { r: 1,     g: 0.835, b: 0,     id: 'Y' }, // Yellow
-      { r: 1,     g: 0.345, b: 0,     id: 'O' }, // Orange
-      { r: 0,     g: 0.608, b: 0.282, id: 'G' }  // Green
+      { c: new THREE.Color(0xFFFFFF), id: 'W' }, // White
+      { c: new THREE.Color(0xB71234), id: 'R' }, // Red
+      { c: new THREE.Color(0x0046AD), id: 'B' }, // Blue
+      { c: new THREE.Color(0xFFD500), id: 'Y' }, // Yellow
+      { c: new THREE.Color(0xFF5800), id: 'O' }, // Orange
+      { c: new THREE.Color(0x009B48), id: 'G' }  // Green
     ];
 
     function identifyColor(cr, cg, cb) {
       if (cr < 0.1 && cg < 0.1 && cb < 0.1) return null; // black/inner
       let best = null, bestDist = Infinity;
       for (const cm of colorMap) {
-        const d = (cr - cm.r) ** 2 + (cg - cm.g) ** 2 + (cb - cm.b) ** 2;
+        const d = (cr - cm.c.r) ** 2 + (cg - cm.c.g) ** 2 + (cb - cm.c.b) ** 2;
         if (d < bestDist) { bestDist = d; best = cm.id; }
       }
       return best;
@@ -165,7 +167,8 @@ export class Solver {
     }
 
     try {
-      const cube = new Cube();
+      const CC = Solver.getCubeClass();
+      const cube = new CC();
       cube.fromString(stateString);
       const solutionStr = cube.solve();
       return Solver.parseMoves(solutionStr, cubeSize);
