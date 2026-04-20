@@ -1,86 +1,27 @@
-// ── Rubik's Cube State & Solver ──
-// Faces: 0=U,1=R,2=F,3=D,4=L,5=B  Colors: 0-5 matching face index
-// Each face is NxN array stored flat. Sticker [row][col] = face[row*N+col]
+import * as THREE from 'three';
+import Cube from 'https://esm.sh/cubejs@1.2.2';
 
-export class CubeState {
-  constructor(n = 3) {
-    this.n = n;
-    this.state = Array.from({ length: 6 }, (_, f) => Array(n * n).fill(f));
-  }
+export class Solver {
+  static initialized = false;
 
-  clone() {
-    const c = new CubeState(this.n);
-    c.state = this.state.map(f => [...f]);
-    return c;
-  }
-
-  isSolved() {
-    return this.state.every(face => face.every(v => v === face[0]));
-  }
-
-  // Get sticker at face f, row r, col c
-  get(f, r, c) { return this.state[f][r * this.n + c]; }
-  set(f, r, c, v) { this.state[f][r * this.n + c] = v; }
-
-  // Rotate face grid CW 90°
-  rotateFaceCW(f) {
-    const n = this.n, old = [...this.state[f]];
-    for (let r = 0; r < n; r++)
-      for (let c = 0; c < n; c++)
-        this.state[f][r * n + c] = old[(n - 1 - c) * n + r];
-  }
-  rotateFaceCCW(f) { for (let i = 0; i < 3; i++) this.rotateFaceCW(f); }
-
-  // Apply a layer move: axis('x','y','z'), layer index (0-based from negative), direction(1=CW,-1=CCW)
-  applyMove(axis, layerIdx, dir) {
-    const n = this.n;
-    const times = dir > 0 ? 1 : 3; // CCW = 3×CW
-    for (let t = 0; t < times; t++) {
-      if (axis === 'y') this._rotateY(layerIdx);
-      else if (axis === 'x') this._rotateX(layerIdx);
-      else this._rotateZ(layerIdx);
+  static async initSolverAI() {
+    if (!Solver.initialized) {
+      Cube.initSolver();
+      Solver.initialized = true;
     }
   }
 
-  _rotateY(layer) {
-    const n = this.n, r = layer;
-    // Y-axis CW from top: F→R→B→L→F (row r of each)
-    if (r === 0) this.rotateFaceCW(0); // U face
-    if (r === n - 1) this.rotateFaceCCW(3); // D face
-    const tmp = [];
-    for (let c = 0; c < n; c++) tmp.push(this.get(2, r, c)); // save F row
-    for (let c = 0; c < n; c++) this.set(2, r, c, this.get(1, r, c)); // R→F? 
-    // Actually: U CW from top means F[row]→L[row], L→B, B→R, R→F
-    // Let me use: cycle F←R←B←L←F (pieces move F→R so new R=old F)
-    // Correction: for Y CW (U move), strip goes F→R→B→L
-    // new_R = old_F, new_B = old_R, new_L = old_B, new_F = old_L
-    // Redo:
-    for (let c = 0; c < n; c++) tmp[c] = this.get(2, r, c); // F
-    for (let c = 0; c < n; c++) this.set(2, r, c, this.get(1, r, n - 1 - c)); // F←R (reversed for correct mapping)
-    // Hmm this gets complicated with orientations. Let me use a simpler approach.
-    // I'll just track via the 3D representation instead.
-    return;
-  }
-
-  // Simplified: just track via move sequences
-  _rotateX(layer) { }
-  _rotateZ(layer) { }
-}
-
-// ── 3x3 Solver using move sequences ──
-// Instead of complex state tracking, we solve by reading 3D state
-// and applying known algorithms
-
-export class Solver {
-  constructor() {
-    this.solution = [];
-  }
-
-  // Parse move string like "R U R' U' F2" into axis/layer/angle moves
+  // Parses CubeJS string output into our axis/layer/angle array
   static parseMoves(str, n = 3) {
+    if (!str || str.trim() === '') return [];
+    
+    // Reverse the sequence conceptually? 
+    // Cube.js returns moves needed to solve. 
+    // "U" means rotate U face clockwise.
     const half = (n - 1) / 2;
     const moves = [];
     const tokens = str.trim().split(/\s+/);
+    
     for (const tok of tokens) {
       if (!tok) continue;
       let face = tok[0];
@@ -88,13 +29,20 @@ export class Solver {
       let double = tok.includes("2");
       let angle, axis, layer;
 
+      // In our code:
+      // +y (U): CW = -PI/2
+      // -y (D): CW = +PI/2
+      // +x (R): CW = -PI/2
+      // -x (L): CW = +PI/2
+      // +z (F): CW = -PI/2
+      // -z (B): CW = +PI/2
       switch (face) {
-        case 'U': axis = 'y'; layer = half; angle = -Math.PI / 2; break;
-        case 'D': axis = 'y'; layer = -half; angle = Math.PI / 2; break;
-        case 'R': axis = 'x'; layer = half; angle = -Math.PI / 2; break;
-        case 'L': axis = 'x'; layer = -half; angle = Math.PI / 2; break;
-        case 'F': axis = 'z'; layer = half; angle = -Math.PI / 2; break;
-        case 'B': axis = 'z'; layer = -half; angle = Math.PI / 2; break;
+        case 'U': axis = 'y'; layer = half;  angle = -Math.PI / 2; break;
+        case 'D': axis = 'y'; layer = -half; angle = Math.PI / 2;  break;
+        case 'R': axis = 'x'; layer = half;  angle = -Math.PI / 2; break;
+        case 'L': axis = 'x'; layer = -half; angle = Math.PI / 2;  break;
+        case 'F': axis = 'z'; layer = half;  angle = -Math.PI / 2; break;
+        case 'B': axis = 'z'; layer = -half; angle = Math.PI / 2;  break;
         default: continue;
       }
       if (prime) angle = -angle;
@@ -108,139 +56,143 @@ export class Solver {
     return moves;
   }
 
-  // Read cube state from 3D cubies
-  static readState(cubies, cubeSize, THREE) {
-    const half = (cubeSize - 1) / 2;
-    // 6 faces, each NxN grid
-    const state = Array.from({ length: 6 }, () => Array(cubeSize * cubeSize).fill(-1));
-
+  static findSolution(cubies, cubeSize) {
+    if (cubeSize !== 3) return null; // We only support true AI for 3x3 for now
+    
+    // 1. Identify which colors belong to which logical face (U,R,F,D,L,B)
+    // Face normals: U(+y), R(+x), F(+z), D(-y), L(-x), B(-z)
     const faceNormals = [
-      [0, 1, 0],   // 0=U (+y)
-      [1, 0, 0],   // 1=R (+x)
-      [0, 0, 1],   // 2=F (+z)
-      [0, -1, 0],  // 3=D (-y)
-      [-1, 0, 0],  // 4=L (-x)
-      [0, 0, -1],  // 5=B (-z)
+      { n: new THREE.Vector3(0, 1, 0),  name: 'U' },
+      { n: new THREE.Vector3(1, 0, 0),  name: 'R' },
+      { n: new THREE.Vector3(0, 0, 1),  name: 'F' },
+      { n: new THREE.Vector3(0, -1, 0), name: 'D' },
+      { n: new THREE.Vector3(-1, 0, 0), name: 'L' },
+      { n: new THREE.Vector3(0, 0, -1), name: 'B' }
+    ];
+
+    const localNormals = [
+      new THREE.Vector3(1, 0, 0), new THREE.Vector3(-1, 0, 0),
+      new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, -1, 0),
+      new THREE.Vector3(0, 0, 1), new THREE.Vector3(0, 0, -1)
     ];
 
     const colorMap = [
-      { r: 1, g: 1, b: 1, id: 0 },       // White = U
-      { r: 0.718, g: 0.071, b: 0.204, id: 1 }, // Red = R
-      { r: 0, g: 0.275, b: 0.678, id: 2 },     // Blue = F
-      { r: 1, g: 0.835, b: 0, id: 3 },          // Yellow = D
-      { r: 1, g: 0.345, b: 0, id: 4 },          // Orange = L
-      { r: 0, g: 0.608, b: 0.282, id: 5 },      // Green = B
+      { r: 1,     g: 1,     b: 1,     id: 'W' }, // White
+      { r: 0.718, g: 0.071, b: 0.204, id: 'R' }, // Red
+      { r: 0,     g: 0.275, b: 0.678, id: 'B' }, // Blue
+      { r: 1,     g: 0.835, b: 0,     id: 'Y' }, // Yellow
+      { r: 1,     g: 0.345, b: 0,     id: 'O' }, // Orange
+      { r: 0,     g: 0.608, b: 0.282, id: 'G' }  // Green
     ];
 
-    function identifyColor(r, g, b) {
-      if (r < 0.1 && g < 0.1 && b < 0.1) return -1; // inner
-      let best = -1, bestDist = Infinity;
+    function identifyColor(cr, cg, cb) {
+      if (cr < 0.1 && cg < 0.1 && cb < 0.1) return null; // black/inner
+      let best = null, bestDist = Infinity;
       for (const cm of colorMap) {
-        const d = (r - cm.r) ** 2 + (g - cm.g) ** 2 + (b - cm.b) ** 2;
+        const d = (cr - cm.r) ** 2 + (cg - cm.g) ** 2 + (cb - cm.b) ** 2;
         if (d < bestDist) { bestDist = d; best = cm.id; }
       }
       return best;
     }
 
-    const localNormals = [
-      new THREE.Vector3(1, 0, 0), new THREE.Vector3(-1, 0, 0),
-      new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, -1, 0),
-      new THREE.Vector3(0, 0, 1), new THREE.Vector3(0, 0, -1),
-    ];
+    // Capture all colored stickers and their world coordinates/normals
+    const stickers = [];
+    const half = (cubeSize - 1) / 2;
 
     for (const cubie of cubies) {
       const colors = cubie.geometry.attributes.color;
-      const pos = cubie.position;
+      let wp = new THREE.Vector3();
+      cubie.getWorldPosition(wp);
+      wp.x = Math.round(wp.x * 2) / 2;
+      wp.y = Math.round(wp.y * 2) / 2;
+      wp.z = Math.round(wp.z * 2) / 2;
 
       for (let fi = 0; fi < 6; fi++) {
         const vi = fi * 4;
-        const r = colors.getX(vi), g = colors.getY(vi), b = colors.getZ(vi);
-        const colorId = identifyColor(r, g, b);
-        if (colorId < 0) continue;
+        const cr = colors.getX(vi), cg = colors.getY(vi), cb = colors.getZ(vi);
+        const colId = identifyColor(cr, cg, cb);
+        if (!colId) continue;
 
-        // Transform local normal to world
         const wn = localNormals[fi].clone().applyQuaternion(cubie.quaternion);
         wn.x = Math.round(wn.x); wn.y = Math.round(wn.y); wn.z = Math.round(wn.z);
 
-        // Which cube face does this world normal correspond to?
-        let faceIdx = -1;
-        for (let j = 0; j < 6; j++) {
-          if (wn.x === faceNormals[j][0] && wn.y === faceNormals[j][1] && wn.z === faceNormals[j][2]) {
-            faceIdx = j; break;
-          }
+        // Find which face this matches
+        const faceMatch = faceNormals.find(f => f.n.x === wn.x && f.n.y === wn.y && f.n.z === wn.z);
+        if (faceMatch) {
+          stickers.push({ faceName: faceMatch.name, x: wp.x, y: wp.y, z: wp.z, color: colId });
         }
-        if (faceIdx < 0) continue;
-
-        // Determine row,col on this face
-        const rc = Solver.posToRowCol(pos, faceIdx, half, cubeSize);
-        if (rc) state[faceIdx][rc.row * cubeSize + rc.col] = colorId;
       }
     }
-    return state;
-  }
 
-  static posToRowCol(pos, faceIdx, half, n) {
-    let row, col;
-    switch (faceIdx) {
-      case 0: // U (+y): row from back(0) to front(n-1), col from left(0) to right(n-1)
-        row = Math.round(-pos.z + half); col = Math.round(pos.x + half); break;
-      case 1: // R (+x): row from top(0) to bottom(n-1), col from front(0) to back(n-1)
-        row = Math.round(-pos.y + half); col = Math.round(-pos.z + half); break;
-      case 2: // F (+z): row from top(0) to bottom(n-1), col from left(0) to right(n-1)
-        row = Math.round(-pos.y + half); col = Math.round(pos.x + half); break;
-      case 3: // D (-y): row from front(0) to back(n-1), col from left(0) to right(n-1)
-        row = Math.round(pos.z + half); col = Math.round(pos.x + half); break;
-      case 4: // L (-x): row from top(0) to bottom(n-1), col from back(0) to front(n-1)
-        row = Math.round(-pos.y + half); col = Math.round(pos.z + half); break;
-      case 5: // B (-z): row from top(0) to bottom(n-1), col from right(0) to left(n-1)
-        row = Math.round(-pos.y + half); col = Math.round(-pos.x + half); break;
+    // Find center color for each face to build color-to-face mapping
+    const centerColors = {};
+    for (const s of stickers) {
+      // Centers are where 2 of the 3 coordinates are 0
+      const zeroes = (s.x === 0 ? 1 : 0) + (s.y === 0 ? 1 : 0) + (s.z === 0 ? 1 : 0);
+      if (zeroes === 2) {
+        centerColors[s.color] = s.faceName;
+      }
     }
-    if (row < 0 || row >= n || col < 0 || col >= n) return null;
-    return { row, col };
-  }
 
-  // Check if state is solved
-  static isSolved(state) {
-    return state.every(face => face.every(v => v === face[0]));
-  }
+    // Check if cube is solved (all stickers on a face match its center)
+    let isSolved = true;
+    for (const s of stickers) {
+      if (centerColors[s.color] !== s.faceName) {
+        isSolved = false; break;
+      }
+    }
+    if (isSolved) return [];
 
-  // Solve 3x3 using beginner's method
-  static solve3x3(state) {
-    // For 3x3, apply known algorithm sequences step by step
-    const moves = [];
-    const s = state.map(f => [...f]); // working copy
+    // Build the 54-char string
+    // Face order: U R F D L B
+    const faceOrder = ['U', 'R', 'F', 'D', 'L', 'B'];
+    let stateString = '';
 
-    // The solver applies sequences and checks results
-    // Due to complexity, we use a practical iterative approach
-    const algos = {
-      // Cross algorithms
-      sexyMove: "R U R' U'",
-      sledge: "R' F R F'",
-      // F2L insert
-      f2lRight: "U R U' R' U' F' U F",
-      f2lLeft: "U' L' U L U F U' F'",
-      // OLL
-      ollCross: "F R U R' U' F'",
-      ollSune: "R U R' U R U2 R'",
-      // PLL
-      pllT: "R U R' U' R' F R2 U' R' U' R U R' F'",
-      pllCorners: "R U R' U' R' F R2 U' R' U' R U R' F'",
-      pllEdges: "R U' R U R U R U' R' U' R2",
-    };
+    for (const fn of faceOrder) {
+      const faceStickers = stickers.filter(s => s.faceName === fn);
+      // Sort face stickers by row, then col
+      faceStickers.sort((a, b) => {
+        let rA, cA, rB, cB;
+        rA = getRow(fn, a); cA = getCol(fn, a);
+        rB = getRow(fn, b); cB = getCol(fn, b);
+        if (rA !== rB) return rA - rB;
+        return cA - cB;
+      });
 
-    // Return algorithmically derived moves
-    // For a working solver, we generate moves to solve step by step
-    return moves;
-  }
+      for (const s of faceStickers) {
+        stateString += centerColors[s.color]; // e.g. maps 'W' id back to 'U'
+      }
+    }
 
-  // General solver: analyzes the state and finds solution
-  static findSolution(cubies, cubeSize, THREE) {
-    const state = Solver.readState(cubies, cubeSize, THREE);
-
-    if (Solver.isSolved(state)) return [];
-
-    // For now, return null to indicate we need the history-based approach
-    // A full algorithmic solver would go here
-    return null;
+    try {
+      const cube = new Cube();
+      cube.fromString(stateString);
+      const solutionStr = cube.solve();
+      return Solver.parseMoves(solutionStr, cubeSize);
+    } catch(e) {
+      console.error("Cube solve error:", e);
+      return null;
+    }
+    
+    function getRow(faceStr, p) {
+      switch (faceStr) {
+        case 'U': return 1 + p.z; // Top is B(-z) -> row 0 when z=-1
+        case 'D': return 1 - p.z; // Top is F(+z) -> row 0 when z=1
+        case 'R': return 1 - p.y; // Top is U(+y) -> row 0 when y=1
+        case 'L': return 1 - p.y;
+        case 'F': return 1 - p.y;
+        case 'B': return 1 - p.y;
+      }
+    }
+    function getCol(faceStr, p) {
+      switch (faceStr) {
+        case 'U': return 1 + p.x; // Left is L(-x)
+        case 'D': return 1 + p.x; // Left is L(-x)
+        case 'R': return 1 - p.z; // Left is F(+z)
+        case 'L': return 1 + p.z; // Left is B(-z)
+        case 'F': return 1 + p.x; // Left is L(-x)
+        case 'B': return 1 - p.x; // Left is R(+x)
+      }
+    }
   }
 }

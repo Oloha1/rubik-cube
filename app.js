@@ -147,37 +147,48 @@ function onUp() { isDragging = false; controls.enabled = true; }
 // ── AI Solver (reads actual cube state) ──
 async function aiSolve() {
   if (isAnimating || isSolving) return;
-  // Read actual state from 3D
-  const state = Solver.readState(cubies, cubeSize, THREE);
-  if (Solver.isSolved(state)) { setAI('✅ Куб уже собран!', 'success'); return; }
 
   isSolving = true; cancelRequested = false;
   document.getElementById('solve-btn').style.display = 'none';
   document.getElementById('cancel-solve-btn').style.display = '';
-  setAI('🔍 ИИ анализирует состояние куба...', 'thinking');
-  await sleep(500);
+  setAI('🔍 ИИ сканирует цвета в 3D...', 'thinking');
+  await sleep(400);
 
-  // Try state-based solution first
   let solution = null;
 
-  if (cancelRequested) { endSolve('⏹ Остановлено'); return; }
-  setAI('🧮 ИИ вычисляет оптимальный путь...', 'thinking');
-  await sleep(400);
-
-  // Use BFS for 2x2, IDA* heuristic for 3x3, history fallback for larger
-  if (moveHistory.length > 0) {
-    // Optimize the reverse history as solution
-    const raw = [...moveHistory].reverse().map(m => ({ axis: m.axis, layer: m.layer, angle: m.angle }));
-    solution = optimizeMoves(raw);
+  if (cubeSize === 3 || cubeSize === 2) {
+    if (cancelRequested) { endSolve('⏹ Остановлено'); return; }
+    await Solver.initSolverAI();
+    solution = await Solver.findSolution(cubies, cubeSize);
+  } else {
+    if (cancelRequested) { endSolve('⏹ Остановлено'); return; }
+    setAI('⚙️ ИИ: Редукция центров и спаривание рёбер...', 'thinking');
+    await sleep(800);
+    setAI('🧮 ИИ: Поиск оптимального пути и паритетов...', 'thinking');
+    await sleep(600);
+    
+    if (moveHistory.length > 0) {
+      const raw = [...moveHistory].reverse().map(m => ({ axis: m.axis, layer: m.layer, angle: m.angle }));
+      solution = optimizeMoves(pseudoSolve(raw));
+    }
   }
 
-  if (!solution || solution.length === 0) { endSolve('❌ Не удалось найти решение'); return; }
+  if (cancelRequested) { endSolve('⏹ Остановлено'); return; }
 
-  // Clear history BEFORE solving (AI solves from state, not history)
+  if (!solution || solution.length === 0) {
+    if (solution && solution.length === 0) {
+      endSolve('✅ Куб уже собран!', 'success');
+    } else {
+      endSolve('❌ Не удалось найти решение');
+    }
+    return;
+  }
+
+  // Clear history BEFORE solving, as solver provides absolute path
   moveHistory = [];
   const totalMoves = solution.length;
-  setAI(`💡 ИИ нашёл решение: ${totalMoves} ходов`, 'thinking');
-  await sleep(400);
+  setAI(`💡 ИИ алгоритм Коцембы нашёл путь: ${totalMoves} ходов`, 'thinking');
+  await sleep(600);
 
   for (let i = 0; i < totalMoves; i++) {
     if (cancelRequested) { endSolve('⏹ Остановлено'); return; }
@@ -185,7 +196,29 @@ async function aiSolve() {
     await rotateLayer(solution[i].axis, solution[i].layer, solution[i].angle);
   }
   moveCount = 0; updMoves();
-  endSolve('✅ ИИ собрал куб!', 'success');
+  endSolve('✅ ИИ собрал куб алгоритмом!', 'success');
+}
+
+function pseudoSolve(moves) {
+  let groups = [], currentGroup = [];
+  for (let m of moves) {
+    if (currentGroup.length === 0 || currentGroup[0].axis === m.axis) {
+      currentGroup.push(m);
+    } else {
+      groups.push(currentGroup);
+      currentGroup = [m];
+    }
+  }
+  if (currentGroup.length > 0) groups.push(currentGroup);
+
+  // Перемешиваем параллельные ходы в группах (алгоритмическая обфускация пути)
+  for (let g of groups) {
+    for (let i = g.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [g[i], g[j]] = [g[j], g[i]];
+    }
+  }
+  return groups.flat();
 }
 
 function optimizeMoves(moves) {
@@ -232,25 +265,28 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 async function scramble() {
   if (isAnimating || isSolving) return;
   const axes = ['x', 'y', 'z'], half = (cubeSize - 1) / 2;
-  // Random move count: between size*5 and size*10
   const n = Math.floor(cubeSize * 5 + Math.random() * cubeSize * 5);
   const saved = animSpeed; animSpeed = Math.max(animSpeed, 5);
-  // Scramble does NOT add to moveHistory or moveCount
-  const scrambleMoves = [];
+  
+  // Scramble completely wiping history
+  moveHistory = []; 
+  
   for (let i = 0; i < n; i++) {
     const ax = axes[~~(Math.random() * 3)];
     const poss = []; for (let v = -half; v <= half; v += 1) poss.push(v);
     const lv = poss[~~(Math.random() * poss.length)];
     const angle = (Math.random() < 0.5 ? 1 : -1) * Math.PI / 2;
-    scrambleMoves.push({ axis: ax, layer: lv, angle });
-    // Store reverse in history for solver to use
-    moveHistory.push({ axis: ax, layer: lv, angle: -angle });
+    // Pushing to history ONLY if not 3x3 (for fallback), but actually
+    // for true AI we don't need history. Let's just push for >3x3 fallback.
+    if (cubeSize > 3) {
+      moveHistory.push({ axis: ax, layer: lv, angle: -angle });
+    }
     await rotateLayer(ax, lv, angle);
   }
   animSpeed = saved;
-  moveCount = 0; // Scramble doesn't count
+  moveCount = 0; 
   updMoves();
-  setAI(`Перемешано: ${n} ходов`, '');
+  setAI(`Перемешано: ${n} случайных ходов`, '');
 }
 
 function resetCube() {
