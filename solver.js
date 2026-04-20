@@ -168,8 +168,7 @@ export class Solver {
 
     try {
       const CC = Solver.getCubeClass();
-      const cube = new CC();
-      cube.fromString(stateString);
+      const cube = CC.fromString(stateString);
       const solutionStr = cube.solve();
       return Solver.parseMoves(solutionStr, cubeSize);
     } catch(e) {
