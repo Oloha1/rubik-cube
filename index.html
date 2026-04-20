@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <title>Кубик Рубика 3D</title>
+  <meta name="description" content="Интерактивный 3D кубик Рубика любого размера с ИИ решателем">
+  <link rel="stylesheet" href="style.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script type="importmap">
+  { "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.162.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.162.0/examples/jsm/"
+  }}
+  </script>
+</head>
+<body>
+  <div id="loading" class="loading"><div class="loading-spinner"></div></div>
+  <div id="canvas-container"></div>
+
+  <button id="panel-toggle" class="panel-toggle">⚙️</button>
+
+  <div class="panel open" id="controls-panel">
+    <div class="panel-header" id="panel-header">
+      <h1 class="panel-title">🧊 Кубик Рубика</h1>
+      <button class="panel-close" id="panel-close">✕</button>
+    </div>
+
+    <div class="panel-body">
+      <div class="control-group">
+        <label>Размер куба</label>
+        <div class="size-selector">
+          <button class="size-btn" data-size="2">2×2</button>
+          <button class="size-btn active" data-size="3">3×3</button>
+          <button class="size-btn" data-size="4">4×4</button>
+          <button class="size-btn" data-size="5">5×5</button>
+          <button class="size-btn" data-size="7">7×7</button>
+          <button class="size-btn" data-size="10">10</button>
+          <button class="size-btn" data-size="20">20</button>
+          <button class="size-btn" data-size="50">50</button>
+        </div>
+        <div class="custom-size">
+          <label>Свой (2–100):</label>
+          <input type="number" id="custom-size-input" min="2" max="100" value="3" inputmode="numeric">
+          <button id="apply-custom-size" class="btn btn-small">ОК</button>
+        </div>
+      </div>
+
+      <div class="control-group">
+        <label>Скорость анимации: <span id="speed-value">1.0×</span></label>
+        <input type="range" id="speed-slider" min="0.1" max="30" step="0.1" value="1">
+      </div>
+
+      <div class="control-group">
+        <label>Ходы: <span id="move-counter">0</span></label>
+      </div>
+
+      <div class="action-buttons">
+        <button id="scramble-btn" class="btn btn-primary">🔀 Перемешать</button>
+        <button id="reset-btn" class="btn btn-secondary">🔄 Сбросить</button>
+        <button id="undo-btn" class="btn btn-outline" disabled>↩ Отменить</button>
+      </div>
+
+      <div class="section-divider"></div>
+      <h2 class="section-title">🤖 ИИ Решатель</h2>
+
+      <div class="control-group">
+        <label>Скорость ИИ: <span id="ai-speed-value">3.0×</span></label>
+        <input type="range" id="ai-speed-slider" min="0.5" max="50" step="0.5" value="3">
+      </div>
+
+      <div class="action-buttons">
+        <button id="solve-btn" class="btn btn-ai">🧠 Решить куб</button>
+        <button id="cancel-solve-btn" class="btn btn-danger" style="display:none">⏹ Остановить</button>
+      </div>
+      <div id="ai-status" class="ai-status"></div>
+
+      <div class="instructions">
+        <p>👆 <strong>Тапни</strong> грань + тяни — поворот слоя</p>
+        <p>👆 <strong>Тапни</strong> фон + тяни — вращение камеры</p>
+        <p>🤏 <strong>Щипок</strong> — приближение</p>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
