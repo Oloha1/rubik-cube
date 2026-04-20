@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import Cube from 'https://esm.sh/cubejs@1.2.2';
+import Cube from 'https://esm.sh/cubejs';
 
 export class Solver {
   static initialized = false;
